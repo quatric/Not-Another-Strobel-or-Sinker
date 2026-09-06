@@ -1,14 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
+import sys
+
+exe_suffix = ".exe" if sys.platform.startswith("win") else ""
+vendor_names = ["ffmpeg", "ffprobe", "rclone"]
+binaries = [(f"vendor/{n}{exe_suffix}", "vendor") for n in vendor_names]
+
+if sys.platform == "darwin":
+    icon = "icon.icns"
+elif sys.platform.startswith("win"):
+    icon = "icon.ico"
+else:
+    icon = None
 
 a = Analysis(
     ['gui.py'],
     pathex=[],
-    binaries=[
-        ('vendor/ffmpeg', 'vendor'),
-        ('vendor/ffprobe', 'vendor'),
-        ('vendor/rclone', 'vendor'),
-        ('vendor/atgame1', 'vendor'),
-    ],
+    binaries=binaries,
     datas=[('icon.png', '.')],
     hiddenimports=[],
     hookspath=[],
@@ -36,7 +43,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['icon.icns'],
+    icon=[icon] if icon else None,
 )
 coll = COLLECT(
     exe,
@@ -47,6 +54,7 @@ coll = COLLECT(
     upx_exclude=[],
     name='nass-gui',
 )
+# BUNDLE only produces a .app; PyInstaller silently skips it on non-macOS.
 app = BUNDLE(
     coll,
     name='Not Another Strobel or Sinker.app',

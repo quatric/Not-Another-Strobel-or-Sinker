@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Not Another Strobel or Sinker -- a small tkinter front end over three
-bundled command-line tools (ffmpeg, rclone, atgame1)."""
+"""Not Another Strobel or Sinker -- a small tkinter front end over bundled
+command-line tools (ffmpeg, rclone)."""
 import json
 import os
 import shutil
@@ -21,28 +21,21 @@ PAL_NTSC_RATIO = Fraction(25025, 24000)  # PAL seconds per NTSC second
 
 def resource_path(name):
     """Resolve a bundled tool by name: frozen app -> dev vendor/ -> system PATH."""
+    names = [name + ".exe", name] if sys.platform.startswith("win") else [name]
+    dirs = []
     if getattr(sys, "frozen", False):
-        candidate = os.path.join(sys._MEIPASS, "vendor", name)
-        if os.path.exists(candidate):
-            return candidate
-    here = os.path.dirname(os.path.abspath(__file__))
-    candidate = os.path.join(here, "vendor", name)
-    if os.path.exists(candidate):
-        return candidate
-    found = shutil.which(name)
-    if found:
-        return found
+        dirs.append(os.path.join(sys._MEIPASS, "vendor"))
+    dirs.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor"))
+    for d in dirs:
+        for n in names:
+            candidate = os.path.join(d, n)
+            if os.path.exists(candidate):
+                return candidate
+    for n in names:
+        found = shutil.which(n)
+        if found:
+            return found
     raise FileNotFoundError(f"could not locate bundled tool: {name}")
-
-
-def vendor_dir():
-    if getattr(sys, "frozen", False):
-        d = os.path.join(sys._MEIPASS, "vendor")
-        if os.path.isdir(d):
-            return d
-    here = os.path.dirname(os.path.abspath(__file__))
-    d = os.path.join(here, "vendor")
-    return d if os.path.isdir(d) else None
 
 
 def app_config_dir():
@@ -95,10 +88,18 @@ class ConsoleMixin:
 
 
 class AtGamesTab(ttk.Frame, ConsoleMixin):
-    """Runs the vendored `atgame1` deep-fry filter against a bundled, vanilla
-    upstream FFmpeg (atgame1 itself just shells out to whatever `ffmpeg` is
-    first on PATH, so we point PATH at our own build instead of the system
-    one)."""
+    """Reproduces the `atgame1` deep-fry filter (pixelation + crushed,
+    pitched-up audio) as a direct call into the bundled, vanilla upstream
+    FFmpeg -- inlined rather than shelling out to the original bash script so
+    it also runs on Windows, which has no bash by default."""
+
+    FFMPEG_ARGS = [
+        "-vf", "scale=iw/8:ih/8,scale=iw*8:ih*8:flags=neighbor",
+        "-af", "asetrate=44100*0.8408964153,aresample=44100,atempo=1.1892071150,"
+               "compand=attacks=0:decays=0:points=-90/0|0/0|90/0,volume=500,"
+               "acrusher=level_in=64:bits=2:mode=log",
+        "-b:v", "30k", "-r", "12",
+    ]
 
     def __init__(self, parent, console):
         ttk.Frame.__init__(self, parent, padding=10)
@@ -112,12 +113,12 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
 
         ttk.Label(
             self, wraplength=520, justify="left",
-            text="Runs the bundled atgame1 script: pixelates the video and crushes "
-                 "the audio (retro/deep-fry effect). Output is written next to the "
+            text="Pixelates the video and crushes the audio (retro/deep-fry "
+                 "effect), same as atgame1. Output is written next to the "
                  "input as \"<input>.mp4\".",
         ).grid(row=1, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 10))
 
-        self.run_btn = ttk.Button(self, text="Run atgame1", command=self.run)
+        self.run_btn = ttk.Button(self, text="Run", command=self.run)
         self.run_btn.grid(row=2, column=1, sticky="w", padx=5, pady=5)
 
     def browse(self):
@@ -131,17 +132,13 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
             messagebox.showwarning("Warning", "Please select a valid input file.")
             return
         try:
-            atgame1 = resource_path("atgame1")
+            ffmpeg = resource_path("ffmpeg")
         except FileNotFoundError as exc:
             messagebox.showerror("Error", str(exc))
             return
 
-        env = os.environ.copy()
-        vd = vendor_dir()
-        if vd:
-            env["PATH"] = vd + os.pathsep + env.get("PATH", "")
-
-        self.run_cmd([atgame1, inp], self.run_btn, env=env)
+        cmd = [ffmpeg, "-y", "-i", inp] + self.FFMPEG_ARGS + [inp + ".mp4"]
+        self.run_cmd(cmd, self.run_btn)
 
 
 class PitchTab(ttk.Frame, ConsoleMixin):

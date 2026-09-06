@@ -2,14 +2,15 @@
 
 Video editing software for girls.
 
-A small tkinter GUI wrapped around three bundled command-line tools. No
-network calls of its own, no telemetry, no bundled credentials of any kind.
+A small tkinter GUI wrapped around bundled command-line tools (FFmpeg,
+rclone). No network calls of its own, no telemetry, no bundled credentials
+of any kind.
 
 ## Tabs
 
-**AtGames** -- runs the vendored `atgame1` filter (pixelation + audio
-crush/pitch, a "deep-fry" effect) against a bundled, vanilla upstream FFmpeg
-build. Output is written next to the input as `<input>.mp4`.
+**AtGames** -- reproduces the `atgame1` filter chain (pixelation + audio
+crush/pitch, a "deep-fry" effect) as a direct call into a bundled, vanilla
+upstream FFmpeg build. Output is written next to the input as `<input>.mp4`.
 
 **Pitch** -- converts a video (and every one of its subtitle streams)
 between NTSC and PAL "pitch": the ~4.1% speed-and-pitch shift a film-rate
@@ -32,12 +33,17 @@ macOS), never into the app bundle or the source tree.
 ./build.sh
 ```
 
-This copies `ffmpeg`, `ffprobe`, `rclone`, and `atgame1` from your `PATH`
-into `vendor/` (not committed -- see `.gitignore`) and then runs
-`pyinstaller build.spec`. The finished app is written to `dist/`.
+This copies `ffmpeg`, `ffprobe`, and `rclone` from your `PATH` into `vendor/`
+(not committed -- see `.gitignore`) and then runs `pyinstaller build.spec`.
+The finished app is written to `dist/`. Works on macOS, Linux, and Windows
+(via Git Bash/MSYS -- e.g. `windows-latest` GitHub Actions runners).
 
-Requirements: Python 3 with `pyinstaller`, and `ffmpeg`/`ffprobe`/`rclone`/
-`atgame1` all present on `PATH`.
+Requirements: Python 3 with `pyinstaller`, and `ffmpeg`/`ffprobe`/`rclone`
+all present on `PATH`.
+
+CI (`.github/workflows/build.yml`) builds all three platforms on every push
+and uploads each as an artifact; see that file for the exact package-manager
+commands used per OS (Homebrew, apt, Chocolatey).
 
 ## Running from source
 
@@ -45,16 +51,16 @@ Requirements: Python 3 with `pyinstaller`, and `ffmpeg`/`ffprobe`/`rclone`/
 python3 gui.py
 ```
 
-Falls back to whatever `ffmpeg`/`ffprobe`/`rclone`/`atgame1` are on `PATH`
-if nothing has been vendored into `vendor/` yet.
+Falls back to whatever `ffmpeg`/`ffprobe`/`rclone` are on `PATH` if nothing
+has been vendored into `vendor/` yet.
 
 ## Licensing
 
 FFmpeg is bundled with GPL-licensed components enabled (libx264, libx265,
 libvpx, libsvtav1), which means any redistribution of this app must comply
 with the GPL. This project is therefore licensed under the GPLv3 -- see
-`LICENSE`. rclone is MIT-licensed and `atgame1` is a small standalone
-script; neither imposes additional restrictions here.
+`LICENSE`. rclone is MIT-licensed and imposes no additional restrictions
+here.
 
 ## Contact
 
