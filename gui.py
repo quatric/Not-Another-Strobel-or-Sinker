@@ -93,13 +93,28 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
     FFmpeg -- inlined rather than shelling out to the original bash script so
     it also runs on Windows, which has no bash by default."""
 
-    FFMPEG_ARGS = [
+    DEEP_FRY_ARGS = [
         "-vf", "scale=iw/8:ih/8,scale=iw*8:ih*8:flags=neighbor",
         "-af", "asetrate=44100*0.8408964153,aresample=44100,atempo=1.1892071150,"
                "compand=attacks=0:decays=0:points=-90/0|0/0|90/0,volume=500,"
                "acrusher=level_in=64:bits=2:mode=log",
         "-b:v", "30k", "-r", "12",
     ]
+
+    # "G Major" is the classic YTP disaster effect: inverted video colors
+    # plus audio run through a chain of pitch-shift passes (each one applied
+    # the way people actually do it with a real pitch-shift tool -- change
+    # pitch, keep tempo/duration the same -- rather than just resampling and
+    # letting the speed drift). The numbered variants are community-defined
+    # by which semitone amounts get chained; "Reverse" plays the clip
+    # backwards through the same chain.
+    SAMPLE_RATE = 44100
+    G_MAJOR_SEMITONES = {
+        "G Major 4": [0, 5],
+        "G Major 7": [0, 3],
+    }
+
+    EFFECTS = ["Deep Fry", "G Major 4", "Reverse G Major 4", "G Major 7", "Reverse G Major 7"]
 
     def __init__(self, parent, console):
         ttk.Frame.__init__(self, parent, padding=10)
@@ -111,20 +126,57 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
         ttk.Entry(self, textvariable=self.input_var).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
         ttk.Button(self, text="Browse...", command=self.browse).grid(row=0, column=2, padx=5, pady=5)
 
+        ttk.Label(self, text="Effect:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
+        self.effect_var = tk.StringVar(value="Deep Fry")
+        ttk.Combobox(
+            self, textvariable=self.effect_var, state="readonly", values=self.EFFECTS,
+        ).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+
         ttk.Label(
             self, wraplength=520, justify="left",
-            text="Pixelates the video and crushes the audio (retro/deep-fry "
-                 "effect), same as atgame1. Output is written next to the "
-                 "input as \"<input>.mp4\".",
-        ).grid(row=1, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 10))
+            text="Deep Fry pixelates the video and crushes the audio, same as "
+                 "atgame1. The G Major effects invert the video's colors and "
+                 "run the audio through a chain of pitch shifts (0 & 5 "
+                 "semitones for G Major 4, 0 & 3 for G Major 7); the Reverse "
+                 "variants play the clip backwards through the same chain. "
+                 "Output is written next to the input.",
+        ).grid(row=2, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 10))
 
         self.run_btn = ttk.Button(self, text="Run", command=self.run)
-        self.run_btn.grid(row=2, column=1, sticky="w", padx=5, pady=5)
+        self.run_btn.grid(row=3, column=1, sticky="w", padx=5, pady=5)
 
     def browse(self):
         f = filedialog.askopenfilename(title="Select input video")
         if f:
             self.input_var.set(f)
+
+    @classmethod
+    def pitch_chain(cls, semitone_stages):
+        """A comma-separated ffmpeg audio filter chain: each stage shifts
+        pitch by the given number of semitones while keeping duration the
+        same (asetrate changes pitch+speed together, atempo undoes the
+        speed change), chained stage-by-stage the way a real pitch-shift
+        plugin gets applied more than once."""
+        parts = []
+        for semitones in semitone_stages:
+            factor = 2 ** (semitones / 12)
+            parts.append(f"asetrate={cls.SAMPLE_RATE}*{factor:.6f}")
+            parts.append(f"aresample={cls.SAMPLE_RATE}")
+            parts.append(f"atempo={1 / factor:.6f}")
+        return ",".join(parts)
+
+    @classmethod
+    def build_args(cls, effect):
+        if effect == "Deep Fry":
+            return cls.DEEP_FRY_ARGS
+        reverse = effect.startswith("Reverse ")
+        g_major_name = effect[len("Reverse "):] if reverse else effect
+        audio = cls.pitch_chain(cls.G_MAJOR_SEMITONES[g_major_name])
+        video = "negate"
+        if reverse:
+            video = "reverse," + video
+            audio = "areverse," + audio
+        return ["-vf", video, "-af", audio]
 
     def run(self):
         inp = self.input_var.get().strip()
@@ -137,7 +189,9 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
             messagebox.showerror("Error", str(exc))
             return
 
-        cmd = [ffmpeg, "-y", "-i", inp] + self.FFMPEG_ARGS + [inp + ".mp4"]
+        effect = self.effect_var.get()
+        suffix = "" if effect == "Deep Fry" else "." + effect.lower().replace(" ", "-")
+        cmd = [ffmpeg, "-y", "-i", inp] + self.build_args(effect) + [inp + suffix + ".mp4"]
         self.run_cmd(cmd, self.run_btn)
 
 
