@@ -114,7 +114,7 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
         "G Major 7": [0, 3],
     }
 
-    EFFECTS = ["Deep Fry", "G Major 4", "Reverse G Major 4", "G Major 7", "Reverse G Major 7"]
+    EFFECTS = ["AtGames", "G Major 4", "Reverse G Major 4", "G Major 7", "Reverse G Major 7"]
 
     def __init__(self, parent, console):
         ttk.Frame.__init__(self, parent, padding=10)
@@ -127,14 +127,14 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
         ttk.Button(self, text="Browse...", command=self.browse).grid(row=0, column=2, padx=5, pady=5)
 
         ttk.Label(self, text="Effect:").grid(row=1, column=0, sticky="e", padx=5, pady=5)
-        self.effect_var = tk.StringVar(value="Deep Fry")
+        self.effect_var = tk.StringVar(value="AtGames")
         ttk.Combobox(
             self, textvariable=self.effect_var, state="readonly", values=self.EFFECTS,
         ).grid(row=1, column=1, sticky="w", padx=5, pady=5)
 
         ttk.Label(
             self, wraplength=520, justify="left",
-            text="Deep Fry pixelates the video and crushes the audio, same as "
+            text="AtGames pixelates the video and crushes the audio, same as "
                  "atgame1. The G Major effects invert the video's colors and "
                  "run the audio through a chain of pitch shifts (0 & 5 "
                  "semitones for G Major 4, 0 & 3 for G Major 7); the Reverse "
@@ -167,7 +167,7 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
 
     @classmethod
     def build_args(cls, effect):
-        if effect == "Deep Fry":
+        if effect == "AtGames":
             return cls.DEEP_FRY_ARGS
         reverse = effect.startswith("Reverse ")
         g_major_name = effect[len("Reverse "):] if reverse else effect
@@ -190,7 +190,7 @@ class AtGamesTab(ttk.Frame, ConsoleMixin):
             return
 
         effect = self.effect_var.get()
-        suffix = "" if effect == "Deep Fry" else "." + effect.lower().replace(" ", "-")
+        suffix = "" if effect == "AtGames" else "." + effect.lower().replace(" ", "-")
         cmd = [ffmpeg, "-y", "-i", inp] + self.build_args(effect) + [inp + suffix + ".mp4"]
         self.run_cmd(cmd, self.run_btn)
 
