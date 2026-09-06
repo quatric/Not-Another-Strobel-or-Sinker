@@ -324,11 +324,12 @@ class PitchTab(ttk.Frame, ConsoleMixin):
 
 
 class DriveTab(ttk.Frame, ConsoleMixin):
-    """A thin wrapper around a bundled rclone binary. Nothing credential-
-    bearing ships with the app: the config file lives only in the user's own
-    app-support directory, and only gets there if the user explicitly imports
-    an existing rclone.conf or runs the interactive `rclone config` wizard
-    themselves."""
+    """A thin, deliberately minimal wrapper around a bundled rclone binary:
+    load a config, reauthenticate with Google if the login expired, upload
+    or download. No manual remote-editing or path typing. Nothing
+    credential-bearing ships with the app: the config file lives only in the
+    user's own app-support directory, and only gets there if the user
+    explicitly loads an existing rclone.conf."""
 
     def __init__(self, parent, console):
         ttk.Frame.__init__(self, parent, padding=10)
@@ -336,38 +337,33 @@ class DriveTab(ttk.Frame, ConsoleMixin):
         self.columnconfigure(1, weight=1)
         self.config_path = os.path.join(app_config_dir(), "rclone.conf")
 
-        ttk.Label(self, text=f"Config file:  {self.config_path}", wraplength=520, justify="left").grid(
-            row=0, column=0, columnspan=3, sticky="w", padx=5, pady=(0, 10))
+        ttk.Label(self, text="Config:").grid(row=0, column=0, sticky="e", padx=5, pady=5)
+        ttk.Label(self, text=self.config_path, wraplength=420, justify="left").grid(
+            row=0, column=1, columnspan=2, sticky="w", padx=5, pady=5)
 
-        ttk.Button(self, text="Import existing rclone.conf...", command=self.import_conf).grid(
-            row=1, column=0, padx=5, pady=5, sticky="w")
-        ttk.Button(self, text="Configure a remote (opens Terminal)...", command=self.configure_remote).grid(
-            row=1, column=1, padx=5, pady=5, sticky="w")
-        ttk.Button(self, text="Refresh remotes", command=self.refresh_remotes).grid(
-            row=1, column=2, padx=5, pady=5, sticky="w")
+        top_btns = ttk.Frame(self)
+        top_btns.grid(row=1, column=1, sticky="w", padx=5, pady=5)
+        ttk.Button(top_btns, text="Load config...", command=self.import_conf).pack(
+            side=tk.LEFT, padx=(0, 5))
+        ttk.Button(top_btns, text="Reauthenticate with Google", command=self.reauthenticate).pack(
+            side=tk.LEFT)
 
-        ttk.Label(self, text="Remote:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
+        ttk.Label(self, text="Account:").grid(row=2, column=0, sticky="e", padx=5, pady=5)
         self.remote_var = tk.StringVar()
         self.remote_cb = ttk.Combobox(self, textvariable=self.remote_var, state="readonly")
         self.remote_cb.grid(row=2, column=1, sticky="ew", padx=5, pady=5)
 
-        ttk.Label(self, text="Remote path:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
-        self.remote_path_var = tk.StringVar(value="/")
-        ttk.Entry(self, textvariable=self.remote_path_var).grid(row=3, column=1, sticky="ew", padx=5, pady=5)
-
-        ttk.Label(self, text="Local path:").grid(row=4, column=0, sticky="e", padx=5, pady=5)
+        ttk.Label(self, text="File or folder:").grid(row=3, column=0, sticky="e", padx=5, pady=5)
         self.local_var = tk.StringVar()
-        ttk.Entry(self, textvariable=self.local_var).grid(row=4, column=1, sticky="ew", padx=5, pady=5)
-        ttk.Button(self, text="Browse...", command=self.browse_local).grid(row=4, column=2, padx=5, pady=5)
+        ttk.Entry(self, textvariable=self.local_var).grid(row=3, column=1, sticky="ew", padx=5, pady=5)
+        ttk.Button(self, text="Browse...", command=self.browse_local).grid(row=3, column=2, padx=5, pady=5)
 
-        self.direction_var = tk.StringVar(value="Upload (local -> remote)")
-        ttk.Combobox(
-            self, textvariable=self.direction_var, state="readonly",
-            values=["Upload (local -> remote)", "Download (remote -> local)"],
-        ).grid(row=5, column=1, sticky="w", padx=5, pady=5)
-
-        self.run_btn = ttk.Button(self, text="Copy", command=self.run_copy)
-        self.run_btn.grid(row=6, column=1, sticky="w", padx=5, pady=5)
+        btns = ttk.Frame(self)
+        btns.grid(row=4, column=1, sticky="w", padx=5, pady=5)
+        self.upload_btn = ttk.Button(btns, text="Upload to Drive", command=self.upload)
+        self.upload_btn.pack(side=tk.LEFT, padx=(0, 5))
+        self.download_btn = ttk.Button(btns, text="Download from Drive", command=self.download)
+        self.download_btn.pack(side=tk.LEFT)
 
         self.after(200, self.refresh_remotes)
 
@@ -385,32 +381,8 @@ class DriveTab(ttk.Frame, ConsoleMixin):
         except Exception as exc:
             messagebox.showerror("Error", f"Could not import config: {exc}")
             return
-        self.append_console(f"Imported {f} -> {self.config_path}\n")
+        self.append_console(f"Loaded {f} -> {self.config_path}\n")
         self.refresh_remotes()
-
-    def configure_remote(self):
-        try:
-            rclone = resource_path("rclone")
-        except FileNotFoundError as exc:
-            messagebox.showerror("Error", str(exc))
-            return
-        env = self.rclone_env()
-        cmd = [rclone, "config", "--config", self.config_path]
-        try:
-            if sys.platform == "darwin":
-                script = f'cd "{os.getcwd()}" && RCLONE_CONFIG="{self.config_path}" "{rclone}" config --config "{self.config_path}"'
-                subprocess.Popen(["osascript", "-e",
-                                   f'tell application "Terminal" to do script "{script}"'])
-            elif sys.platform.startswith("win"):
-                subprocess.Popen(["cmd", "/k"] + cmd, env=env)
-            else:
-                subprocess.Popen(["x-terminal-emulator", "-e", " ".join(cmd)], env=env)
-        except Exception as exc:
-            messagebox.showerror(
-                "Error",
-                f"Could not open a terminal automatically ({exc}).\n\n"
-                f"Run this yourself:\nRCLONE_CONFIG=\"{self.config_path}\" {rclone} config",
-            )
 
     def refresh_remotes(self):
         if not os.path.exists(self.config_path):
@@ -427,40 +399,60 @@ class DriveTab(ttk.Frame, ConsoleMixin):
         if remotes and not self.remote_var.get():
             self.remote_var.set(remotes[0])
 
-    def browse_local(self):
-        f = filedialog.askdirectory(title="Select local folder")
-        if f:
-            self.local_var.set(f)
-
-    def run_copy(self):
+    def reauthenticate(self):
         remote = self.remote_var.get().strip()
-        remote_path = self.remote_path_var.get().strip().lstrip("/")
-        local = self.local_var.get().strip()
         if not remote:
-            messagebox.showwarning("Warning", "Please select (or configure) a remote first.")
-            return
-        if not local:
-            messagebox.showwarning("Warning", "Please select a local file or folder.")
+            messagebox.showwarning("Warning", "Load a config and pick an account first.")
             return
         try:
             rclone = resource_path("rclone")
         except FileNotFoundError as exc:
             messagebox.showerror("Error", str(exc))
             return
+        # Opens the account's sign-in page in the default browser and waits
+        # for it to complete -- this is what actually needs "Google" opened,
+        # not anything the app does directly.
+        cmd = [rclone, "config", "reconnect", remote, "--config", self.config_path]
+        self.run_cmd(cmd, self.upload_btn, env=self.rclone_env())
 
-        remote_target = f"{remote}{remote_path}"
-        upload = self.direction_var.get().startswith("Upload")
-        src, dst = (local, remote_target) if upload else (remote_target, local)
+    def browse_local(self):
+        f = filedialog.askopenfilename(title="Select a file")
+        if not f:
+            f = filedialog.askdirectory(title="Or select a folder")
+        if f:
+            self.local_var.set(f)
+
+    def _copy(self, upload):
+        remote = self.remote_var.get().strip()
+        local = self.local_var.get().strip()
+        if not remote:
+            messagebox.showwarning("Warning", "Load a config and pick an account first.")
+            return
+        if not local:
+            messagebox.showwarning("Warning", "Please select a file or folder.")
+            return
+        try:
+            rclone = resource_path("rclone")
+        except FileNotFoundError as exc:
+            messagebox.showerror("Error", str(exc))
+            return
+        src, dst = (local, remote) if upload else (remote, local)
         cmd = [rclone, "copy", src, dst, "-P", "--config", self.config_path]
-        self.run_cmd(cmd, self.run_btn, env=self.rclone_env())
+        btn = self.upload_btn if upload else self.download_btn
+        self.run_cmd(cmd, btn, env=self.rclone_env())
+
+    def upload(self):
+        self._copy(upload=True)
+
+    def download(self):
+        self._copy(upload=False)
 
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(f"{APP_NAME} v1.0")
-        self.geometry("700x750")
-        self.minsize(650, 650)
+        self.minsize(900, 620)
         self.configure(padx=15, pady=15)
 
         try:
@@ -494,6 +486,25 @@ class App(tk.Tk):
         for label, cls in (("AtGames", AtGamesTab), ("Pitch", PitchTab), ("Drive", DriveTab)):
             frame = cls(notebook, self.console)
             notebook.add(frame, text=label)
+
+        # macOS can restore a stale window frame from a previous run of this
+        # same app path, which may be narrower than the content actually
+        # needs and cause widgets to overlap -- force our own computed size.
+        self.update_idletasks()
+        self._min_width = max(self.winfo_reqwidth(), 900)
+        self._min_height = max(self.winfo_reqheight(), 620)
+        self.geometry(f"{self._min_width}x{self._min_height}")
+        # A bundled macOS app can have its window frame restored (by the OS,
+        # keyed to the app bundle) to whatever size it last closed at, which
+        # can be narrower than the content needs and overlap widgets. That
+        # restoration happens once the window is actually mapped, i.e. after
+        # this constructor returns -- so reassert our own minimum size once
+        # the event loop is running to win that race.
+        self.after(150, self._enforce_min_size)
+
+    def _enforce_min_size(self):
+        if self.winfo_width() < self._min_width or self.winfo_height() < self._min_height:
+            self.geometry(f"{self._min_width}x{self._min_height}")
 
 
 if __name__ == "__main__":

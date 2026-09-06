@@ -53,4 +53,8 @@ app = BUNDLE(
     icon='icon.icns',
     bundle_identifier=None,
     version='1.0',
+    # Without this, macOS restores this app's window to whatever frame it
+    # last closed at (keyed to the bundle), which can be narrower than the
+    # content needs and make widgets overlap.
+    info_plist={'NSQuitAlwaysKeepsWindows': False},
 )
